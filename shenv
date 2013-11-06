@@ -1,0 +1,171 @@
+#!/usr/bin/python
+import sys
+import os
+import getopt
+import plistlib
+
+def singleton(func):
+	def singleton_func():
+		if not hasattr(func, 'singleton_value'):
+			func.singleton_value = func()
+		return func.singleton_value
+	return singleton_func
+
+@singleton
+def path_of_status_file():
+	return os.path.join(os.environ['HOME'], '.shenv.plist')
+
+@singleton
+def default_configs():
+	return { }
+
+class Environment(object):
+	def __init__(self, name, path):
+		super(Environment, self).__init__()
+		self.__name = name
+		self.__path = path
+
+	@property
+	def name(self):
+		return self.__name
+
+	@property
+	def path(self):
+		return self.__path
+
+@singleton
+def context():
+	class Context(object):
+		def __init__(self):
+			super(Context, self).__init__()
+			self.__environments = {}
+			self.__configs = default_configs()
+
+		def load(self, path):
+			pass
+
+		def save(self, path):
+			pass
+
+		@property
+		def environment_names(self):
+			return self.__environments.keys()
+
+		def environment_with_name(self, name):
+			return self.__environments.get(name, None)
+
+		def remove_environment_with_name(self, name):
+			del self.__environments[name]
+
+		def add_environment(self, env):
+			self.environments[env.name] = env
+
+	context = Context()
+	context.load(path_of_status_file())
+	return context
+
+@singleton
+def command_mapping():
+	return { }
+
+class CommandError(Exception):
+	def __init__(self, message = '', needShowUsage = True):
+		super(CommandError, self).__init__(message)
+		self.__needShowUsage = needShowUsage
+
+	@property
+	def needShowUsage(self):
+		return self.__needShowUsage
+		
+def command(brief, detail):
+	def decorator(func):
+		(prefix, name) = func.func_name.split('_', 1)
+		assert(prefix == 'cmd')
+		assert(not name in command_mapping())
+
+		def show_usage():
+			print >>sys.stderr, 'Sub-command %s : %s' % (name, brief)
+			print >>sys.stderr, detail
+
+		def command_func(args):
+			try:
+				func(args)
+			except CommandError, e:
+				print >>sys.stderr, e.message
+				if e.needShowUsage:
+					show_usage()
+				exit(-1)
+		command_mapping()[name] = command_func
+		return command_func
+	return decorator
+
+@command(
+' ',
+'''
+''')
+def cmd_list(args):
+	print context().environment_names
+
+def load_environment_with_path(path):
+	pass
+
+@command(
+'add a new environment',
+'''
+''')
+def cmd_add(args):
+	if len(args) < 1:
+		raise CommandError('need to specify at least 1 environment path.')
+	count = 0
+	for p in args:
+		try:
+			env = load_environment_with_path(p)
+			context().add_environment(env)
+			count += 1
+		except Exception, e:
+			pass
+	print '%d environments added' % count
+
+@command(
+'install the shared env',
+'''
+'''
+)
+def cmd_install(args):
+	pass
+
+@command(
+'uninstall the shared env',
+'''
+'''
+)
+def cmd_uninstall(args):
+	pass
+
+@command(
+'update environments',
+'''
+'''
+)
+def cmd_update(args):
+	pass
+
+def show_usage():
+	print '''Usage:'''
+
+def main(args):
+	if len(args) > 0:
+		subcmd = args[0]
+	else:
+		show_usage()
+		sys.exit(-1)
+	command = command_mapping().get(subcmd, None)
+	if command != None:
+		command(args[1:])
+	else:
+		show_usage()
+		sys.exit(-1)
+
+if __name__ == '__main__':
+	main(sys.argv[1:])
+
